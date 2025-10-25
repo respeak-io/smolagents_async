@@ -47,7 +47,8 @@ class InterpreterError(ValueError):
 ERRORS = {
     name: getattr(builtins, name)
     for name in dir(builtins)
-    if isinstance(getattr(builtins, name), type) and issubclass(getattr(builtins, name), BaseException)
+    if isinstance(getattr(builtins, name), type)
+    and issubclass(getattr(builtins, name), BaseException)
 }
 
 DEFAULT_MAX_LEN_OUTPUT = 50000
@@ -198,7 +199,9 @@ async def evaluate_unaryop(
     custom_tools: Dict[str, Callable],
     authorized_imports: List[str],
 ) -> Any:
-    operand = await evaluate_ast(expression.operand, state, static_tools, custom_tools, authorized_imports)
+    operand = await evaluate_ast(
+        expression.operand, state, static_tools, custom_tools, authorized_imports
+    )
     if isinstance(expression.op, ast.USub):
         return -operand
     elif isinstance(expression.op, ast.UAdd):
@@ -208,7 +211,9 @@ async def evaluate_unaryop(
     elif isinstance(expression.op, ast.Invert):
         return ~operand
     else:
-        raise InterpreterError(f"Unary operation {expression.op.__class__.__name__} is not supported.")
+        raise InterpreterError(
+            f"Unary operation {expression.op.__class__.__name__} is not supported."
+        )
 
 
 async def evaluate_lambda(
@@ -243,17 +248,23 @@ async def evaluate_while(
     authorized_imports: List[str],
 ) -> None:
     iterations = 0
-    while await evaluate_ast(while_loop.test, state, static_tools, custom_tools, authorized_imports):
+    while await evaluate_ast(
+        while_loop.test, state, static_tools, custom_tools, authorized_imports
+    ):
         for node in while_loop.body:
             try:
-                await evaluate_ast(node, state, static_tools, custom_tools, authorized_imports)
+                await evaluate_ast(
+                    node, state, static_tools, custom_tools, authorized_imports
+                )
             except BreakException:
                 return None
             except ContinueException:
                 break
         iterations += 1
         if iterations > MAX_WHILE_ITERATIONS:
-            raise InterpreterError(f"Maximum number of {MAX_WHILE_ITERATIONS} iterations in While loop exceeded")
+            raise InterpreterError(
+                f"Maximum number of {MAX_WHILE_ITERATIONS} iterations in While loop exceeded"
+            )
     return None
 
 
@@ -268,7 +279,8 @@ async def create_function(
         func_state = state.copy()
         arg_names = [arg.arg for arg in func_def.args.args]
         default_values = [
-            await evaluate_ast(d, state, static_tools, custom_tools, authorized_imports) for d in func_def.args.defaults
+            await evaluate_ast(d, state, static_tools, custom_tools, authorized_imports)
+            for d in func_def.args.defaults
         ]
 
         # Apply default values
@@ -305,7 +317,9 @@ async def create_function(
         result = None
         try:
             for stmt in func_def.body:
-                result = await evaluate_ast(stmt, func_state, static_tools, custom_tools, authorized_imports)
+                result = await evaluate_ast(
+                    stmt, func_state, static_tools, custom_tools, authorized_imports
+                )
         except ReturnException as e:
             result = e.value
 
@@ -324,7 +338,9 @@ async def evaluate_function_def(
     custom_tools: Dict[str, Callable],
     authorized_imports: List[str],
 ) -> Callable:
-    custom_tools[func_def.name] = await create_function(func_def, state, static_tools, custom_tools, authorized_imports)
+    custom_tools[func_def.name] = await create_function(
+        func_def, state, static_tools, custom_tools, authorized_imports
+    )
     return custom_tools[func_def.name]
 
 
@@ -336,12 +352,17 @@ async def evaluate_class_def(
     authorized_imports: List[str],
 ) -> type:
     class_name = class_def.name
-    bases = [await evaluate_ast(base, state, static_tools, custom_tools, authorized_imports) for base in class_def.bases]
+    bases = [
+        await evaluate_ast(base, state, static_tools, custom_tools, authorized_imports)
+        for base in class_def.bases
+    ]
     class_dict = {}
 
     for stmt in class_def.body:
         if isinstance(stmt, ast.FunctionDef):
-            class_dict[stmt.name] = await evaluate_function_def(stmt, state, static_tools, custom_tools, authorized_imports)
+            class_dict[stmt.name] = await evaluate_function_def(
+                stmt, state, static_tools, custom_tools, authorized_imports
+            )
         elif isinstance(stmt, ast.Assign):
             for target in stmt.targets:
                 if isinstance(target, ast.Name):
@@ -361,7 +382,9 @@ async def evaluate_class_def(
                         authorized_imports,
                     )
         else:
-            raise InterpreterError(f"Unsupported statement in class body: {stmt.__class__.__name__}")
+            raise InterpreterError(
+                f"Unsupported statement in class body: {stmt.__class__.__name__}"
+            )
 
     new_class = type(class_name, tuple(bases), class_dict)
     state[class_name] = new_class
@@ -379,26 +402,38 @@ async def evaluate_augassign(
         if isinstance(target, ast.Name):
             return state.get(target.id, 0)
         elif isinstance(target, ast.Subscript):
-            obj = await evaluate_ast(target.value, state, static_tools, custom_tools, authorized_imports)
-            key = await evaluate_ast(target.slice, state, static_tools, custom_tools, authorized_imports)
+            obj = await evaluate_ast(
+                target.value, state, static_tools, custom_tools, authorized_imports
+            )
+            key = await evaluate_ast(
+                target.slice, state, static_tools, custom_tools, authorized_imports
+            )
             return obj[key]
         elif isinstance(target, ast.Attribute):
-            obj = await evaluate_ast(target.value, state, static_tools, custom_tools, authorized_imports)
+            obj = await evaluate_ast(
+                target.value, state, static_tools, custom_tools, authorized_imports
+            )
             return getattr(obj, target.attr)
         elif isinstance(target, ast.Tuple):
             return tuple(await get_current_value(elt) for elt in target.elts)
         elif isinstance(target, ast.List):
             return [await get_current_value(elt) for elt in target.elts]
         else:
-            raise InterpreterError("AugAssign not supported for {type(target)} targets.")
+            raise InterpreterError(
+                "AugAssign not supported for {type(target)} targets."
+            )
 
     current_value = await get_current_value(expression.target)
-    value_to_add = await evaluate_ast(expression.value, state, static_tools, custom_tools, authorized_imports)
+    value_to_add = await evaluate_ast(
+        expression.value, state, static_tools, custom_tools, authorized_imports
+    )
 
     if isinstance(expression.op, ast.Add):
         if isinstance(current_value, list):
             if not isinstance(value_to_add, list):
-                raise InterpreterError(f"Cannot add non-list value {value_to_add} to a list.")
+                raise InterpreterError(
+                    f"Cannot add non-list value {value_to_add} to a list."
+                )
             current_value += value_to_add
         else:
             current_value += value_to_add
@@ -425,7 +460,9 @@ async def evaluate_augassign(
     elif isinstance(expression.op, ast.RShift):
         current_value >>= value_to_add
     else:
-        raise InterpreterError(f"Operation {type(expression.op).__name__} is not supported.")
+        raise InterpreterError(
+            f"Operation {type(expression.op).__name__} is not supported."
+        )
 
     # Update the state: current_value has been updated in-place
     await set_value(
@@ -449,12 +486,16 @@ async def evaluate_boolop(
 ) -> bool:
     if isinstance(node.op, ast.And):
         for value in node.values:
-            if not await evaluate_ast(value, state, static_tools, custom_tools, authorized_imports):
+            if not await evaluate_ast(
+                value, state, static_tools, custom_tools, authorized_imports
+            ):
                 return False
         return True
     elif isinstance(node.op, ast.Or):
         for value in node.values:
-            if await evaluate_ast(value, state, static_tools, custom_tools, authorized_imports):
+            if await evaluate_ast(
+                value, state, static_tools, custom_tools, authorized_imports
+            ):
                 return True
         return False
 
@@ -467,8 +508,12 @@ async def evaluate_binop(
     authorized_imports: List[str],
 ) -> Any:
     # Recursively evaluate the left and right operands
-    left_val = await evaluate_ast(binop.left, state, static_tools, custom_tools, authorized_imports)
-    right_val = await evaluate_ast(binop.right, state, static_tools, custom_tools, authorized_imports)
+    left_val = await evaluate_ast(
+        binop.left, state, static_tools, custom_tools, authorized_imports
+    )
+    right_val = await evaluate_ast(
+        binop.right, state, static_tools, custom_tools, authorized_imports
+    )
 
     # Determine the operation based on the type of the operator in the BinOp
     if isinstance(binop.op, ast.Add):
@@ -496,7 +541,9 @@ async def evaluate_binop(
     elif isinstance(binop.op, ast.RShift):
         return left_val >> right_val
     else:
-        raise NotImplementedError(f"Binary operation {type(binop.op).__name__} is not implemented.")
+        raise NotImplementedError(
+            f"Binary operation {type(binop.op).__name__} is not implemented."
+        )
 
 
 async def evaluate_assign(
@@ -506,13 +553,19 @@ async def evaluate_assign(
     custom_tools: Dict[str, Callable],
     authorized_imports: List[str],
 ) -> Any:
-    result = await evaluate_ast(assign.value, state, static_tools, custom_tools, authorized_imports)
+    result = await evaluate_ast(
+        assign.value, state, static_tools, custom_tools, authorized_imports
+    )
     if len(assign.targets) == 1:
         target = assign.targets[0]
-        await set_value(target, result, state, static_tools, custom_tools, authorized_imports)
+        await set_value(
+            target, result, state, static_tools, custom_tools, authorized_imports
+        )
     else:
         if len(assign.targets) != len(result):
-            raise InterpreterError(f"Assign failed: expected {len(result)} values but got {len(assign.targets)}.")
+            raise InterpreterError(
+                f"Assign failed: expected {len(result)} values but got {len(assign.targets)}."
+            )
         expanded_values = []
         for tgt in assign.targets:
             if isinstance(tgt, ast.Starred):
@@ -520,7 +573,9 @@ async def evaluate_assign(
             else:
                 expanded_values.append(result)
         for tgt, val in zip(assign.targets, expanded_values):
-            await set_value(tgt, val, state, static_tools, custom_tools, authorized_imports)
+            await set_value(
+                tgt, val, state, static_tools, custom_tools, authorized_imports
+            )
     return result
 
 
@@ -534,7 +589,9 @@ async def set_value(
 ) -> None:
     if isinstance(target, ast.Name):
         if target.id in static_tools:
-            raise InterpreterError(f"Cannot assign to name '{target.id}': doing this would erase the existing tool!")
+            raise InterpreterError(
+                f"Cannot assign to name '{target.id}': doing this would erase the existing tool!"
+            )
         state[target.id] = value
     elif isinstance(target, ast.Tuple):
         if not isinstance(value, tuple):
@@ -545,13 +602,21 @@ async def set_value(
         if len(target.elts) != len(value):
             raise InterpreterError("Cannot unpack tuple of wrong size")
         for i, elem in enumerate(target.elts):
-            await set_value(elem, value[i], state, static_tools, custom_tools, authorized_imports)
+            await set_value(
+                elem, value[i], state, static_tools, custom_tools, authorized_imports
+            )
     elif isinstance(target, ast.Subscript):
-        obj = await evaluate_ast(target.value, state, static_tools, custom_tools, authorized_imports)
-        key = await evaluate_ast(target.slice, state, static_tools, custom_tools, authorized_imports)
+        obj = await evaluate_ast(
+            target.value, state, static_tools, custom_tools, authorized_imports
+        )
+        key = await evaluate_ast(
+            target.slice, state, static_tools, custom_tools, authorized_imports
+        )
         obj[key] = value
     elif isinstance(target, ast.Attribute):
-        obj = await evaluate_ast(target.value, state, static_tools, custom_tools, authorized_imports)
+        obj = await evaluate_ast(
+            target.value, state, static_tools, custom_tools, authorized_imports
+        )
         setattr(obj, target.attr, value)
 
 
@@ -563,11 +628,15 @@ async def evaluate_call(
     authorized_imports: List[str],
 ) -> Any:
     if not (
-        isinstance(call.func, ast.Attribute) or isinstance(call.func, ast.Name) or isinstance(call.func, ast.Subscript)
+        isinstance(call.func, ast.Attribute)
+        or isinstance(call.func, ast.Name)
+        or isinstance(call.func, ast.Subscript)
     ):
         raise InterpreterError(f"This is not a correct function: {call.func}).")
     if isinstance(call.func, ast.Attribute):
-        obj = await evaluate_ast(call.func.value, state, static_tools, custom_tools, authorized_imports)
+        obj = await evaluate_ast(
+            call.func.value, state, static_tools, custom_tools, authorized_imports
+        )
         func_name = call.func.attr
         if not hasattr(obj, func_name):
             raise InterpreterError(f"Object {obj} has no attribute {func_name}")
@@ -589,12 +658,18 @@ async def evaluate_call(
             )
 
     elif isinstance(call.func, ast.Subscript):
-        value = await evaluate_ast(call.func.value, state, static_tools, custom_tools, authorized_imports)
-        index = await evaluate_ast(call.func.slice, state, static_tools, custom_tools, authorized_imports)
+        value = await evaluate_ast(
+            call.func.value, state, static_tools, custom_tools, authorized_imports
+        )
+        index = await evaluate_ast(
+            call.func.slice, state, static_tools, custom_tools, authorized_imports
+        )
         if isinstance(value, (list, tuple)):
             func = value[index]
         else:
-            raise InterpreterError(f"Cannot subscript object of type {type(value).__name__}")
+            raise InterpreterError(
+                f"Cannot subscript object of type {type(value).__name__}"
+            )
 
         if not callable(func):
             raise InterpreterError(f"This is not a correct function: {call.func}).")
@@ -602,12 +677,22 @@ async def evaluate_call(
     args = []
     for arg in call.args:
         if isinstance(arg, ast.Starred):
-            args.extend(await evaluate_ast(arg.value, state, static_tools, custom_tools, authorized_imports))
+            args.extend(
+                await evaluate_ast(
+                    arg.value, state, static_tools, custom_tools, authorized_imports
+                )
+            )
         else:
-            args.append(await evaluate_ast(arg, state, static_tools, custom_tools, authorized_imports))
+            args.append(
+                await evaluate_ast(
+                    arg, state, static_tools, custom_tools, authorized_imports
+                )
+            )
 
     kwargs = {
-        keyword.arg: await evaluate_ast(keyword.value, state, static_tools, custom_tools, authorized_imports)
+        keyword.arg: await evaluate_ast(
+            keyword.value, state, static_tools, custom_tools, authorized_imports
+        )
         for keyword in call.keywords
     }
 
@@ -640,10 +725,11 @@ async def evaluate_call(
                 raise InterpreterError(
                     f"Invoking a builtin function that has not been explicitly added as a tool is not allowed ({func_name})."
                 )
-            
+
             # Check if the function is async
             if inspect.iscoroutinefunction(func):
                 import asyncio
+
                 try:
                     loop = asyncio.get_event_loop()
                 except RuntimeError:
@@ -660,11 +746,17 @@ async def evaluate_subscript(
     custom_tools: Dict[str, Callable],
     authorized_imports: List[str],
 ) -> Any:
-    index = await evaluate_ast(subscript.slice, state, static_tools, custom_tools, authorized_imports)
-    value = await evaluate_ast(subscript.value, state, static_tools, custom_tools, authorized_imports)
+    index = await evaluate_ast(
+        subscript.slice, state, static_tools, custom_tools, authorized_imports
+    )
+    value = await evaluate_ast(
+        subscript.value, state, static_tools, custom_tools, authorized_imports
+    )
 
     if isinstance(value, str) and isinstance(index, str):
-        raise InterpreterError("You're trying to subscript a string with a string index, which is impossible")
+        raise InterpreterError(
+            "You're trying to subscript a string with a string index, which is impossible"
+        )
     if isinstance(value, pd.core.indexing._LocIndexer):
         parent_object = value.obj
         return parent_object.loc[index]
@@ -679,11 +771,15 @@ async def evaluate_subscript(
         return value[index]
     elif isinstance(value, (list, tuple)):
         if not (-len(value) <= index < len(value)):
-            raise InterpreterError(f"Index {index} out of bounds for list of length {len(value)}")
+            raise InterpreterError(
+                f"Index {index} out of bounds for list of length {len(value)}"
+            )
         return value[int(index)]
     elif isinstance(value, str):
         if not (-len(value) <= index < len(value)):
-            raise InterpreterError(f"Index {index} out of bounds for string of length {len(value)}")
+            raise InterpreterError(
+                f"Index {index} out of bounds for string of length {len(value)}"
+            )
         return value[index]
     elif index in value:
         return value[index]
@@ -724,9 +820,12 @@ async def evaluate_condition(
     custom_tools: Dict[str, Callable],
     authorized_imports: List[str],
 ) -> bool | object:
-    left = await evaluate_ast(condition.left, state, static_tools, custom_tools, authorized_imports)
+    left = await evaluate_ast(
+        condition.left, state, static_tools, custom_tools, authorized_imports
+    )
     comparators = [
-        await evaluate_ast(c, state, static_tools, custom_tools, authorized_imports) for c in condition.comparators
+        await evaluate_ast(c, state, static_tools, custom_tools, authorized_imports)
+        for c in condition.comparators
     ]
     ops = [type(op) for op in condition.ops]
 
@@ -777,15 +876,21 @@ async def evaluate_if(
     authorized_imports: List[str],
 ) -> Any:
     result = None
-    test_result = await evaluate_ast(if_statement.test, state, static_tools, custom_tools, authorized_imports)
+    test_result = await evaluate_ast(
+        if_statement.test, state, static_tools, custom_tools, authorized_imports
+    )
     if test_result:
         for line in if_statement.body:
-            line_result = await evaluate_ast(line, state, static_tools, custom_tools, authorized_imports)
+            line_result = await evaluate_ast(
+                line, state, static_tools, custom_tools, authorized_imports
+            )
             if line_result is not None:
                 result = line_result
     else:
         for line in if_statement.orelse:
-            line_result = await evaluate_ast(line, state, static_tools, custom_tools, authorized_imports)
+            line_result = await evaluate_ast(
+                line, state, static_tools, custom_tools, authorized_imports
+            )
             if line_result is not None:
                 result = line_result
     return result
@@ -799,7 +904,9 @@ async def evaluate_for(
     authorized_imports: List[str],
 ) -> Any:
     result = None
-    iterator = await evaluate_ast(for_loop.iter, state, static_tools, custom_tools, authorized_imports)
+    iterator = await evaluate_ast(
+        for_loop.iter, state, static_tools, custom_tools, authorized_imports
+    )
     for counter in iterator:
         await set_value(
             for_loop.target,
@@ -811,7 +918,9 @@ async def evaluate_for(
         )
         for node in for_loop.body:
             try:
-                line_result = await evaluate_ast(node, state, static_tools, custom_tools, authorized_imports)
+                line_result = await evaluate_ast(
+                    node, state, static_tools, custom_tools, authorized_imports
+                )
                 if line_result is not None:
                     result = line_result
             except BreakException:
@@ -831,7 +940,9 @@ async def evaluate_listcomp(
     custom_tools: Dict[str, Callable],
     authorized_imports: List[str],
 ) -> List[Any]:
-    async def inner_evaluate(generators: List[ast.comprehension], index: int, current_state: Dict[str, Any]) -> List[Any]:
+    async def inner_evaluate(
+        generators: List[ast.comprehension], index: int, current_state: Dict[str, Any]
+    ) -> List[Any]:
         if index >= len(generators):
             return [
                 await evaluate_ast(
@@ -859,7 +970,9 @@ async def evaluate_listcomp(
             else:
                 new_state[generator.target.id] = value
             if all(
-                await evaluate_ast(if_clause, new_state, static_tools, custom_tools, authorized_imports)
+                await evaluate_ast(
+                    if_clause, new_state, static_tools, custom_tools, authorized_imports
+                )
                 for if_clause in generator.ifs
             ):
                 result.extend(await inner_evaluate(generators, index + 1, new_state))
@@ -877,30 +990,40 @@ async def evaluate_try(
 ) -> None:
     try:
         for stmt in try_node.body:
-            await evaluate_ast(stmt, state, static_tools, custom_tools, authorized_imports)
+            await evaluate_ast(
+                stmt, state, static_tools, custom_tools, authorized_imports
+            )
     except Exception as e:
         matched = False
         for handler in try_node.handlers:
             if handler.type is None or isinstance(
                 e,
-                await evaluate_ast(handler.type, state, static_tools, custom_tools, authorized_imports),
+                await evaluate_ast(
+                    handler.type, state, static_tools, custom_tools, authorized_imports
+                ),
             ):
                 matched = True
                 if handler.name:
                     state[handler.name] = e
                 for stmt in handler.body:
-                    await evaluate_ast(stmt, state, static_tools, custom_tools, authorized_imports)
+                    await evaluate_ast(
+                        stmt, state, static_tools, custom_tools, authorized_imports
+                    )
                 break
         if not matched:
             raise e
     else:
         if try_node.orelse:
             for stmt in try_node.orelse:
-                await evaluate_ast(stmt, state, static_tools, custom_tools, authorized_imports)
+                await evaluate_ast(
+                    stmt, state, static_tools, custom_tools, authorized_imports
+                )
     finally:
         if try_node.finalbody:
             for stmt in try_node.finalbody:
-                await evaluate_ast(stmt, state, static_tools, custom_tools, authorized_imports)
+                await evaluate_ast(
+                    stmt, state, static_tools, custom_tools, authorized_imports
+                )
 
 
 async def evaluate_raise(
@@ -911,11 +1034,15 @@ async def evaluate_raise(
     authorized_imports: List[str],
 ) -> None:
     if raise_node.exc is not None:
-        exc = await evaluate_ast(raise_node.exc, state, static_tools, custom_tools, authorized_imports)
+        exc = await evaluate_ast(
+            raise_node.exc, state, static_tools, custom_tools, authorized_imports
+        )
     else:
         exc = None
     if raise_node.cause is not None:
-        cause = await evaluate_ast(raise_node.cause, state, static_tools, custom_tools, authorized_imports)
+        cause = await evaluate_ast(
+            raise_node.cause, state, static_tools, custom_tools, authorized_imports
+        )
     else:
         cause = None
     if exc is not None:
@@ -934,10 +1061,14 @@ async def evaluate_assert(
     custom_tools: Dict[str, Callable],
     authorized_imports: List[str],
 ) -> None:
-    test_result = await evaluate_ast(assert_node.test, state, static_tools, custom_tools, authorized_imports)
+    test_result = await evaluate_ast(
+        assert_node.test, state, static_tools, custom_tools, authorized_imports
+    )
     if not test_result:
         if assert_node.msg:
-            msg = await evaluate_ast(assert_node.msg, state, static_tools, custom_tools, authorized_imports)
+            msg = await evaluate_ast(
+                assert_node.msg, state, static_tools, custom_tools, authorized_imports
+            )
             raise AssertionError(msg)
         else:
             # Include the failing condition in the assertion message
@@ -954,27 +1085,39 @@ async def evaluate_with(
 ) -> None:
     contexts = []
     for item in with_node.items:
-        context_expr = await evaluate_ast(item.context_expr, state, static_tools, custom_tools, authorized_imports)
+        context_expr = await evaluate_ast(
+            item.context_expr, state, static_tools, custom_tools, authorized_imports
+        )
         if item.optional_vars:
-            state[item.optional_vars.id] = await context_expr.__aenter__() if hasattr(context_expr, '__aenter__') else context_expr.__enter__()
+            state[item.optional_vars.id] = (
+                await context_expr.__aenter__()
+                if hasattr(context_expr, "__aenter__")
+                else context_expr.__enter__()
+            )
             contexts.append(state[item.optional_vars.id])
         else:
-            context_var = await context_expr.__aenter__() if hasattr(context_expr, '__aenter__') else context_expr.__enter__()
+            context_var = (
+                await context_expr.__aenter__()
+                if hasattr(context_expr, "__aenter__")
+                else context_expr.__enter__()
+            )
             contexts.append(context_var)
 
     try:
         for stmt in with_node.body:
-            await evaluate_ast(stmt, state, static_tools, custom_tools, authorized_imports)
+            await evaluate_ast(
+                stmt, state, static_tools, custom_tools, authorized_imports
+            )
     except Exception as e:
         for context in reversed(contexts):
-            if hasattr(context, '__aexit__'):
+            if hasattr(context, "__aexit__"):
                 await context.__aexit__(type(e), e, e.__traceback__)
             else:
                 context.__exit__(type(e), e, e.__traceback__)
         raise
     else:
         for context in reversed(contexts):
-            if hasattr(context, '__aexit__'):
+            if hasattr(context, "__aexit__"):
                 await context.__aexit__(None, None, None)
             else:
                 context.__exit__(None, None, None)
@@ -1004,10 +1147,14 @@ def get_safe_module(raw_module, dangerous_patterns, authorized_imports, visited=
         # Skip dangerous patterns at any level
         if any(
             pattern in raw_module.__name__.split(".") + [attr_name]
-            and not check_module_authorized(pattern, authorized_imports, dangerous_patterns)
+            and not check_module_authorized(
+                pattern, authorized_imports, dangerous_patterns
+            )
             for pattern in dangerous_patterns
         ):
-            logger.info(f"Skipping dangerous attribute {raw_module.__name__}.{attr_name}")
+            logger.info(
+                f"Skipping dangerous attribute {raw_module.__name__}.{attr_name}"
+            )
             continue
 
         try:
@@ -1020,7 +1167,9 @@ def get_safe_module(raw_module, dangerous_patterns, authorized_imports, visited=
             continue
         # Recursively process nested modules, passing visited set
         if isinstance(attr_value, ModuleType):
-            attr_value = get_safe_module(attr_value, dangerous_patterns, authorized_imports, visited=visited)
+            attr_value = get_safe_module(
+                attr_value, dangerous_patterns, authorized_imports, visited=visited
+            )
 
         setattr(safe_module, attr_name, attr_value)
 
@@ -1032,10 +1181,17 @@ def check_module_authorized(module_name, authorized_imports, dangerous_patterns)
         return True
     else:
         module_path = module_name.split(".")
-        if any([module in dangerous_patterns and module not in authorized_imports for module in module_path]):
+        if any(
+            [
+                module in dangerous_patterns and module not in authorized_imports
+                for module in module_path
+            ]
+        ):
             return False
         # ["A", "B", "C"] -> ["A", "A.B", "A.B.C"]
-        module_subpaths = [".".join(module_path[:i]) for i in range(1, len(module_path) + 1)]
+        module_subpaths = [
+            ".".join(module_path[:i]) for i in range(1, len(module_path) + 1)
+        ]
         return any(subpath in authorized_imports for subpath in module_subpaths)
 
 
@@ -1062,20 +1218,30 @@ def import_modules(expression, state, authorized_imports):
 
     if isinstance(expression, ast.Import):
         for alias in expression.names:
-            if check_module_authorized(alias.name, authorized_imports, dangerous_patterns):
+            if check_module_authorized(
+                alias.name, authorized_imports, dangerous_patterns
+            ):
                 raw_module = import_module(alias.name)
-                state[alias.asname or alias.name] = get_safe_module(raw_module, dangerous_patterns, authorized_imports)
+                state[alias.asname or alias.name] = get_safe_module(
+                    raw_module, dangerous_patterns, authorized_imports
+                )
             else:
                 raise InterpreterError(
                     f"Import of {alias.name} is not allowed. Authorized imports are: {str(authorized_imports)}"
                 )
         return None
     elif isinstance(expression, ast.ImportFrom):
-        if check_module_authorized(expression.module, authorized_imports, dangerous_patterns):
-            raw_module = __import__(expression.module, fromlist=[alias.name for alias in expression.names])
+        if check_module_authorized(
+            expression.module, authorized_imports, dangerous_patterns
+        ):
+            raw_module = __import__(
+                expression.module, fromlist=[alias.name for alias in expression.names]
+            )
             module = get_safe_module(raw_module, dangerous_patterns, authorized_imports)
             if expression.names[0].name == "*":  # Handle "from module import *"
-                if hasattr(module, "__all__"):  # If module has __all__, import only those names
+                if hasattr(
+                    module, "__all__"
+                ):  # If module has __all__, import only those names
                     for name in module.__all__:
                         state[name] = getattr(module, name)
                 else:  # If no __all__, import all public names (those not starting with '_')
@@ -1087,7 +1253,9 @@ def import_modules(expression, state, authorized_imports):
                     if hasattr(module, alias.name):
                         state[alias.asname or alias.name] = getattr(module, alias.name)
                     else:
-                        raise InterpreterError(f"Module {expression.module} has no attribute {alias.name}")
+                        raise InterpreterError(
+                            f"Module {expression.module} has no attribute {alias.name}"
+                        )
         else:
             raise InterpreterError(
                 f"Import from {expression.module} is not allowed. Authorized imports are: {str(authorized_imports)}"
@@ -1104,7 +1272,9 @@ async def evaluate_dictcomp(
 ) -> Dict[Any, Any]:
     result = {}
     for gen in dictcomp.generators:
-        iter_value = await evaluate_ast(gen.iter, state, static_tools, custom_tools, authorized_imports)
+        iter_value = await evaluate_ast(
+            gen.iter, state, static_tools, custom_tools, authorized_imports
+        )
         for value in iter_value:
             new_state = state.copy()
             await set_value(
@@ -1116,7 +1286,9 @@ async def evaluate_dictcomp(
                 authorized_imports,
             )
             if all(
-                await evaluate_ast(if_clause, new_state, static_tools, custom_tools, authorized_imports)
+                await evaluate_ast(
+                    if_clause, new_state, static_tools, custom_tools, authorized_imports
+                )
                 for if_clause in gen.ifs
             ):
                 key = await evaluate_ast(
@@ -1160,17 +1332,25 @@ async def evaluate_delete(
             if target.id in state:
                 del state[target.id]
             else:
-                raise InterpreterError(f"Cannot delete name '{target.id}': name is not defined")
+                raise InterpreterError(
+                    f"Cannot delete name '{target.id}': name is not defined"
+                )
         elif isinstance(target, ast.Subscript):
             # Handle index/key deletion (del x[y])
-            obj = await evaluate_ast(target.value, state, static_tools, custom_tools, authorized_imports)
-            index = await evaluate_ast(target.slice, state, static_tools, custom_tools, authorized_imports)
+            obj = await evaluate_ast(
+                target.value, state, static_tools, custom_tools, authorized_imports
+            )
+            index = await evaluate_ast(
+                target.slice, state, static_tools, custom_tools, authorized_imports
+            )
             try:
                 del obj[index]
             except (TypeError, KeyError, IndexError) as e:
                 raise InterpreterError(f"Cannot delete index/key: {str(e)}")
         else:
-            raise InterpreterError(f"Deletion of {type(target).__name__} targets is not supported")
+            raise InterpreterError(
+                f"Deletion of {type(target).__name__} targets is not supported"
+            )
 
 
 async def evaluate_ast(
@@ -1206,141 +1386,249 @@ async def evaluate_ast(
         )
     state["_operations_count"] += 1
 
-  # Handle all existing cases...
+    # Handle all existing cases...
     if isinstance(expression, ast.Await):
         # Evaluate the value being awaited
         value = await evaluate_ast(
-            expression.value, 
-            state, 
-            static_tools, 
-            custom_tools, 
-            authorized_imports
+            expression.value, state, static_tools, custom_tools, authorized_imports
         )
         # Await the result if it's awaitable
-        if hasattr(value, '__await__'):
+        if hasattr(value, "__await__"):
             return await value
         return value
 
     elif isinstance(expression, ast.Assign):
         # Assignment -> we evaluate the assignment which should update the state
         # We return the variable assigned as it may be used to determine the final result.
-        return await evaluate_assign(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_assign(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.AugAssign):
-        return await evaluate_augassign(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_augassign(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Call):
         # Function call -> we return the value of the function call
-        return await evaluate_call(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_call(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Constant):
         # Constant -> just return the value
         return expression.value
     elif isinstance(expression, ast.Tuple):
         return tuple(
-            await evaluate_ast(elt, state, static_tools, custom_tools, authorized_imports) for elt in expression.elts
+            await evaluate_ast(
+                elt, state, static_tools, custom_tools, authorized_imports
+            )
+            for elt in expression.elts
         )
     elif isinstance(expression, (ast.ListComp, ast.GeneratorExp)):
-        return await evaluate_listcomp(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_listcomp(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.UnaryOp):
-        return await evaluate_unaryop(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_unaryop(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Starred):
-        return await evaluate_ast(expression.value, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_ast(
+            expression.value, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.BoolOp):
         # Boolean operation -> evaluate the operation
-        return await evaluate_boolop(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_boolop(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Break):
         raise BreakException()
     elif isinstance(expression, ast.Continue):
         raise ContinueException()
     elif isinstance(expression, ast.BinOp):
         # Binary operation -> execute operation
-        return await evaluate_binop(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_binop(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Compare):
         # Comparison -> evaluate the comparison
-        return await evaluate_condition(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_condition(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Lambda):
-        return await evaluate_lambda(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_lambda(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.FunctionDef):
-        return await evaluate_function_def(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_function_def(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Dict):
         # Dict -> evaluate all keys and values
-        keys = [await evaluate_ast(k, state, static_tools, custom_tools, authorized_imports) for k in expression.keys]
-        values = [await evaluate_ast(v, state, static_tools, custom_tools, authorized_imports) for v in expression.values]
+        keys = [
+            await evaluate_ast(k, state, static_tools, custom_tools, authorized_imports)
+            for k in expression.keys
+        ]
+        values = [
+            await evaluate_ast(v, state, static_tools, custom_tools, authorized_imports)
+            for v in expression.values
+        ]
         return dict(zip(keys, values))
     elif isinstance(expression, ast.Expr):
         # Expression -> evaluate the content
-        return await evaluate_ast(expression.value, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_ast(
+            expression.value, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.For):
         # For loop -> execute the loop
-        return await evaluate_for(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_for(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.FormattedValue):
         # Formatted value (part of f-string) -> evaluate the content and return
-        return await evaluate_ast(expression.value, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_ast(
+            expression.value, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.If):
         # If -> execute the right branch
-        return await evaluate_if(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_if(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif hasattr(ast, "Index") and isinstance(expression, ast.Index):
-        return await evaluate_ast(expression.value, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_ast(
+            expression.value, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.JoinedStr):
         return "".join(
-            [str(await evaluate_ast(v, state, static_tools, custom_tools, authorized_imports)) for v in expression.values]
+            [
+                str(
+                    await evaluate_ast(
+                        v, state, static_tools, custom_tools, authorized_imports
+                    )
+                )
+                for v in expression.values
+            ]
         )
     elif isinstance(expression, ast.List):
         # List -> evaluate all elements
-        return [await evaluate_ast(elt, state, static_tools, custom_tools, authorized_imports) for elt in expression.elts]
+        return [
+            await evaluate_ast(
+                elt, state, static_tools, custom_tools, authorized_imports
+            )
+            for elt in expression.elts
+        ]
     elif isinstance(expression, ast.Name):
         # Name -> pick up the value in the state
-        return await evaluate_name(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_name(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Subscript):
         # Subscript -> return the value of the indexing
-        return await evaluate_subscript(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_subscript(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.IfExp):
-        test_val = await evaluate_ast(expression.test, state, static_tools, custom_tools, authorized_imports)
+        test_val = await evaluate_ast(
+            expression.test, state, static_tools, custom_tools, authorized_imports
+        )
         if test_val:
-            return await evaluate_ast(expression.body, state, static_tools, custom_tools, authorized_imports)
+            return await evaluate_ast(
+                expression.body, state, static_tools, custom_tools, authorized_imports
+            )
         else:
-            return await evaluate_ast(expression.orelse, state, static_tools, custom_tools, authorized_imports)
+            return await evaluate_ast(
+                expression.orelse, state, static_tools, custom_tools, authorized_imports
+            )
     elif isinstance(expression, ast.Attribute):
-        value = await evaluate_ast(expression.value, state, static_tools, custom_tools, authorized_imports)
+        value = await evaluate_ast(
+            expression.value, state, static_tools, custom_tools, authorized_imports
+        )
         return getattr(value, expression.attr)
     elif isinstance(expression, ast.Slice):
         return slice(
-            await evaluate_ast(expression.lower, state, static_tools, custom_tools, authorized_imports)
-            if expression.lower is not None
-            else None,
-            await evaluate_ast(expression.upper, state, static_tools, custom_tools, authorized_imports)
-            if expression.upper is not None
-            else None,
-            await evaluate_ast(expression.step, state, static_tools, custom_tools, authorized_imports)
-            if expression.step is not None
-            else None,
+            (
+                await evaluate_ast(
+                    expression.lower,
+                    state,
+                    static_tools,
+                    custom_tools,
+                    authorized_imports,
+                )
+                if expression.lower is not None
+                else None
+            ),
+            (
+                await evaluate_ast(
+                    expression.upper,
+                    state,
+                    static_tools,
+                    custom_tools,
+                    authorized_imports,
+                )
+                if expression.upper is not None
+                else None
+            ),
+            (
+                await evaluate_ast(
+                    expression.step,
+                    state,
+                    static_tools,
+                    custom_tools,
+                    authorized_imports,
+                )
+                if expression.step is not None
+                else None
+            ),
         )
     elif isinstance(expression, ast.DictComp):
-        return await evaluate_dictcomp(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_dictcomp(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.While):
-        return await evaluate_while(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_while(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, (ast.Import, ast.ImportFrom)):
         return import_modules(expression, state, authorized_imports)
     elif isinstance(expression, ast.ClassDef):
-        return await evaluate_class_def(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_class_def(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Try):
-        return await evaluate_try(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_try(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Raise):
-        return await evaluate_raise(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_raise(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Assert):
-        return await evaluate_assert(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_assert(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.With):
-        return await evaluate_with(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_with(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     elif isinstance(expression, ast.Set):
-        return {await evaluate_ast(elt, state, static_tools, custom_tools, authorized_imports) for elt in expression.elts}
+        return {
+            await evaluate_ast(
+                elt, state, static_tools, custom_tools, authorized_imports
+            )
+            for elt in expression.elts
+        }
     elif isinstance(expression, ast.Return):
         raise ReturnException(
-            await evaluate_ast(expression.value, state, static_tools, custom_tools, authorized_imports)
+            await evaluate_ast(
+                expression.value, state, static_tools, custom_tools, authorized_imports
+            )
             if expression.value
             else None
         )
     elif isinstance(expression, ast.Pass):
         return None
     elif isinstance(expression, ast.Delete):
-        return await evaluate_delete(expression, state, static_tools, custom_tools, authorized_imports)
+        return await evaluate_delete(
+            expression, state, static_tools, custom_tools, authorized_imports
+        )
     else:
         # For now we refuse anything else. Let's add things as we need them.
         raise InterpreterError(f"{expression.__class__.__name__} is not supported.")
@@ -1399,11 +1687,14 @@ async def evaluate_python_code(
     def final_answer(value):
         raise FinalAnswerException(value)
 
-    static_tools["final_answer"] = final_answer
+    if "final_answer" not in static_tools:
+        static_tools["final_answer"] = final_answer
 
     try:
         for node in expression.body:
-            result = await evaluate_ast(node, state, static_tools, custom_tools, authorized_imports)
+            result = await evaluate_ast(
+                node, state, static_tools, custom_tools, authorized_imports
+            )
         state["_print_outputs"].value = truncate_content(
             str(state["_print_outputs"]), max_length=max_print_outputs_length
         )
@@ -1437,7 +1728,9 @@ class LocalPythonInterpreter:
         if max_print_outputs_length is None:
             self.max_print_outputs_length = DEFAULT_MAX_LEN_OUTPUT
         self.additional_authorized_imports = additional_authorized_imports
-        self.authorized_imports = list(set(BASE_BUILTIN_MODULES) | set(self.additional_authorized_imports))
+        self.authorized_imports = list(
+            set(BASE_BUILTIN_MODULES) | set(self.additional_authorized_imports)
+        )
         # Add base trusted tools to list
         self.static_tools = {
             **tools,
@@ -1445,7 +1738,9 @@ class LocalPythonInterpreter:
         }
         # TODO: assert self.authorized imports are all installed locally
 
-    async def __call__(self, code_action: str, additional_variables: Dict) -> Tuple[Any, str, bool]:
+    async def __call__(
+        self, code_action: str, additional_variables: Dict
+    ) -> Tuple[Any, str, bool]:
         self.state.update(additional_variables)
         output, is_final_answer = await evaluate_python_code(
             code_action,
